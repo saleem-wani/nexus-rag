@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------
+  # PostgreSQL 16 with pgvector extension
+  # ----------------------------------------------------
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: nexus-rag-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nexus_rag}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ----------------------------------------------------
+  # FastAPI RAG Backend
+  # ----------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nexus-rag-backend
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-nexus_rag}
+      - DEFAULT_EMBEDDING_PROVIDER=${DEFAULT_EMBEDDING_PROVIDER:-fastembed}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-["http://localhost:5173"]}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+      - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION:-384}
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+      - CHUNK_SIZE=${CHUNK_SIZE:-800}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-150}
+      - TOP_K_RESULTS=${TOP_K_RESULTS:-5}
+      - SIMILARITY_THRESHOLD=${SIMILARITY_THRESHOLD:-0.2}
+      - SOURCE_RELEVANCE_MARGIN=${SOURCE_RELEVANCE_MARGIN:-0.1}
+      - MAX_UPLOAD_FILE_SIZE=${MAX_UPLOAD_FILE_SIZE:-26214400}
+      - MAX_UPLOAD_BATCH_SIZE=${MAX_UPLOAD_BATCH_SIZE:-104857600}
+      - MAX_UPLOAD_FILES=${MAX_UPLOAD_FILES:-10}
+      - RAGAS_DO_NOT_TRACK=true
+    ports:
+      - "${BACKEND_PORT:-8001}:8000"
+    volumes:
+      - uploads_data:/app/uploads
+      - ./backend/app:/app/app
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # ----------------------------------------------------
+  # React + Vite Frontend (Nginx Proxy)
+  # ----------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nexus-rag-frontend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads_data:
+
