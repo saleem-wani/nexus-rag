@@ -1,0 +1,60 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.aws}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.aws}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.aws}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      RAGAS_DO_NOT_TRACK: "true"
+      ALLOWED_ORIGINS: '${ALLOWED_ORIGINS:-["http://localhost"]}'
+      DEFAULT_EMBEDDING_PROVIDER: ${DEFAULT_EMBEDDING_PROVIDER:-fastembed}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
+      DEFAULT_LLM_PROVIDER: ${DEFAULT_LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      CHUNK_SIZE: ${CHUNK_SIZE:-800}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-150}
+      TOP_K_RESULTS: ${TOP_K_RESULTS:-5}
+      SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.2}
+      SOURCE_RELEVANCE_MARGIN: ${SOURCE_RELEVANCE_MARGIN:-0.1}
+      MAX_UPLOAD_FILE_SIZE: ${MAX_UPLOAD_FILE_SIZE:-26214400}
+      MAX_UPLOAD_BATCH_SIZE: ${MAX_UPLOAD_BATCH_SIZE:-104857600}
+      MAX_UPLOAD_FILES: ${MAX_UPLOAD_FILES:-10}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads_data:

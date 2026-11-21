@@ -82,6 +82,25 @@ docker compose up --build
 - **Backend Swagger API Docs**: [http://localhost:8001/docs](http://localhost:8001/docs)
 - **PostgreSQL Database**: `localhost:5434` (User: `postgres`, Pass: `postgres`, DB: `nexus_rag`)
 
+### AWS EC2 (single-instance deployment)
+
+`docker-compose.aws.yml` runs the same three services on one EC2 host. It publishes only the frontend on port 80; PostgreSQL and the API stay on the private Compose network. The app does not include user authentication, so for a personal deployment restrict inbound HTTP access to your own IP in the EC2 security group. Do not expose this setup publicly without adding authentication and HTTPS.
+
+On the EC2 host, install Docker Engine and the Compose plugin, then:
+
+```bash
+cp .env.aws.example .env.aws
+openssl rand -hex 24
+```
+
+Put the generated value in `POSTGRES_PASSWORD` in `.env.aws`. Add your LLM provider key there if needed, then start the stack:
+
+```bash
+docker compose --env-file .env.aws -f docker-compose.aws.yml up -d --build
+```
+
+Keep `.env.aws` private. The named database and upload volumes persist across container restarts. Set the EC2 security group to allow SSH (port 22) only from your IP and HTTP (port 80) only from your IP for a personal deployment; do not open ports 5432 or 8000.
+
 ---
 
 ## 🛠️ Local Development (Without Docker)
